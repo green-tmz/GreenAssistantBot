@@ -4,9 +4,10 @@ import (
 	"GreenAssistantBot/internal/database"
 	"GreenAssistantBot/internal/database/models"
 	"GreenAssistantBot/internal/storage"
-	"log"
-
+	"fmt"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
+	"log"
+	"os"
 )
 
 type UpdateHandler struct {
@@ -81,6 +82,12 @@ func (h *UpdateHandler) HandleUpdates(updates tgbotapi.UpdatesChannel) {
 		userText := update.Message.Text
 
 		log.Printf("[%d]: %s", chatID, userText)
+
+		adminChatID := os.Getenv("ADMIN_CHAT_ID")
+		if adminChatID != "" && adminChatID != fmt.Sprintf("%d", chatID) {
+			log.Printf("Chat id: %d", chatID)
+			continue
+		}
 
 		// Обработка состояний
 		if state, exists := h.storage.GetUserState(chatID); exists {
