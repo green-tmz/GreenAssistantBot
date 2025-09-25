@@ -28,6 +28,7 @@ func CreateSettingsMenuKeyboard() tgbotapi.ReplyKeyboardMarkup {
 			tgbotapi.NewKeyboardButton("👤 Профиль"),
 		),
 		tgbotapi.NewKeyboardButtonRow(
+			tgbotapi.NewKeyboardButton("🌡️ Уведомления о погоде"),
 			tgbotapi.NewKeyboardButton("⬅️ Назад"),
 		),
 	)

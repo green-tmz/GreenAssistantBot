@@ -86,38 +86,48 @@ func GetUserByTelegramID(telegramID int64) (*models.User, error) {
 func SaveOrUpdateUser(user *models.User) error {
 	db := GetConnect()
 
-	log.Printf("Saving user: TelegramID=%d, FirstName=%s, City=%s",
-		user.TelegramID, user.FirstName, user.City)
+	log.Printf("Saving user: TelegramID=%d, FirstName=%s, City=%s, WeatherNotifications=%t",
+		user.TelegramID, user.FirstName, user.City, user.WeatherNotifications)
 
 	// Сначала проверяем, существует ли пользователь
 	existingUser, err := GetUserByTelegramID(user.TelegramID)
 	if errors.Is(err, gorm.ErrRecordNotFound) {
-		db.Create(user)
-	}
-
-	if existingUser != nil {
-		updates := make(map[string]interface{})
-
-		if user.City != "" {
-			updates["city"] = user.City
+		// Если пользователя не существует, создаем нового
+		result := db.Create(user)
+		if result.Error != nil {
+			return result.Error
 		}
-		if user.UserName != "" {
-			updates["user_name"] = user.UserName
-		}
-		if user.FirstName != "" {
-			updates["first_name"] = user.FirstName
-		}
-		if user.LastName != "" {
-			updates["last_name"] = user.LastName
-		}
-
-		if len(updates) > 0 {
-			db.Model(&existingUser).Updates(updates)
-		}
+		return nil
 	}
 
 	if err != nil {
 		return err
+	}
+
+	// Если пользователь существует, обновляем его данные
+	updates := make(map[string]interface{})
+
+	if user.City != "" {
+		updates["city"] = user.City
+	}
+	if user.UserName != "" {
+		updates["user_name"] = user.UserName
+	}
+	if user.FirstName != "" {
+		updates["first_name"] = user.FirstName
+	}
+	if user.LastName != "" {
+		updates["last_name"] = user.LastName
+	}
+
+	// Добавляем обновление для WeatherNotifications
+	updates["weather_notifications"] = user.WeatherNotifications
+
+	if len(updates) > 0 {
+		result := db.Model(&existingUser).Updates(updates)
+		if result.Error != nil {
+			return result.Error
+		}
 	}
 
 	return nil
@@ -134,4 +144,17 @@ func UserExists(telegramID int64) (bool, error) {
 	}
 
 	return count > 0, nil
+}
+
+func GetAllUsers() ([]models.User, error) {
+	db := GetConnect()
+
+	var users []models.User
+	result := db.Find(&users)
+
+	if result.Error != nil {
+		return nil, result.Error
+	}
+
+	return users, nil
 }

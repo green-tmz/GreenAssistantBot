@@ -119,6 +119,18 @@ func (h *UpdateHandler) HandleUpdates(updates tgbotapi.UpdatesChannel) {
 			h.msgHandler.AskForCity(chatID)
 			h.storage.SetUserState(chatID, StateChangingCityFromProfile)
 
+		case "ℹ️ Информация":
+			h.msgHandler.SendInfo(chatID)
+
+		case "⚙️ Настройки":
+			h.msgHandler.SendSettingsMenu(chatID)
+
+		case "📞 Поддержка":
+			h.msgHandler.SendSupport(chatID)
+
+		case "🔔 Уведомления":
+			h.msgHandler.SendNotificationsSettings(chatID)
+
 		case "👤 Профиль":
 			h.msgHandler.SendProfileSettings(chatID)
 
@@ -130,11 +142,44 @@ func (h *UpdateHandler) HandleUpdates(updates tgbotapi.UpdatesChannel) {
 				h.storage.SetUserState(chatID, StateWaitingForWeatherCity)
 			}
 
+		case "🌡️ Уведомления о погоде":
+			// Получаем текущее состояние уведомлений пользователя
+			user, err := database.GetUserByTelegramID(chatID)
+			if err != nil {
+				log.Printf("Error getting user: %v", err)
+				h.msgHandler.sendMessage(chatID, "Произошла ошибка. Попробуйте позже.", CreateSettingsMenuKeyboard())
+				continue
+			}
+
+			// Изменяем состояние уведомлений
+			user.WeatherNotifications = !user.WeatherNotifications
+			err = database.SaveOrUpdateUser(user)
+			if err != nil {
+				log.Printf("Error updating user: %v", err)
+				h.msgHandler.sendMessage(chatID, "Произошла ошибка. Попробуйте позже.", CreateSettingsMenuKeyboard())
+				continue
+			}
+
+			// Отправляем подтверждение
+			status := "включены"
+			if !user.WeatherNotifications {
+				status = "выключены"
+			}
+			h.msgHandler.sendMessage(chatID, fmt.Sprintf("Уведомления о погоде %s", status), CreateSettingsMenuKeyboard())
+
 		case "⬅️ Назад", "🏠 В начало":
-			h.msgHandler.sendMessage(chatID, "Главное меню", CreateMainMenuKeyboard())
+			h.msgHandler.SendMainMenu(chatID)
 
 		default:
 			h.msgHandler.sendMessage(chatID, "Используйте меню для навигации", CreateMainMenuKeyboard())
 		}
 	}
+}
+
+func (h *MessageHandler) SendMessage(chatID int64, text string, keyboard tgbotapi.ReplyKeyboardMarkup) error {
+	return h.sendMessage(chatID, text, keyboard)
+}
+
+func (h *UpdateHandler) GetMessageHandler() *MessageHandler {
+	return h.msgHandler
 }

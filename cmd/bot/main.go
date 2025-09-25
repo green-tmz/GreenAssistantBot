@@ -2,6 +2,7 @@ package main
 
 import (
 	"GreenAssistantBot/internal/bot"
+	"GreenAssistantBot/internal/scheduler"
 	"context"
 	"errors"
 	"fmt"
@@ -91,8 +92,13 @@ func main() {
 
 	updates := api.ListenForWebhook("/")
 	updateHandler := bot.NewUpdateHandler(api, botStorage)
-
 	go updateHandler.HandleUpdates(updates)
+
+	scheduler := scheduler.NewScheduler(updateHandler.GetMessageHandler())
+	scheduler.StartWeatherNotifications()
+
+	stop = make(chan os.Signal, 1)
+	signal.Notify(stop, os.Interrupt)
 
 	err = database.AutoMigrate()
 	if err != nil {

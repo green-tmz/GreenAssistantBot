@@ -119,3 +119,79 @@ func (h *MessageHandler) DeleteLastBotMessage(chatID int64) {
 		h.bot.Request(deleteConfig) // Игнорируем ошибку
 	}
 }
+
+func (h *MessageHandler) SendMainMenu(chatID int64) {
+	msg := tgbotapi.NewMessage(chatID, "Выберите один из пунктов")
+	msg.ReplyMarkup = CreateMainMenuKeyboard()
+
+	_, err := h.bot.Send(msg)
+	if err != nil {
+		log.Printf("Error sending main menu: %v", err)
+	}
+}
+
+func (h *MessageHandler) SendSupport(chatID int64) {
+	text := `📞 Поддержка:
+
+Если у вас возникли вопросы или проблемы, свяжитесь с нами:
+
+• Email: support@example.com
+• Телеграм: @support_username
+
+Мы всегда готовы помочь!`
+
+	msg := tgbotapi.NewMessage(chatID, text)
+	msg.ReplyMarkup = CreateMainMenuKeyboard()
+
+	_, err := h.bot.Send(msg)
+	if err != nil {
+		log.Printf("Error sending support: %v", err)
+	}
+}
+
+func (h *MessageHandler) SendInfo(chatID int64) {
+	text := `📋 Информация о боте:
+
+• Версия: 1.0
+• Описание: Это демонстрационный бот
+• Функции: Основное меню, настройки, поддержка
+
+Используйте меню для навигации.`
+
+	msg := tgbotapi.NewMessage(chatID, text)
+	msg.ReplyMarkup = CreateMainMenuKeyboard()
+
+	_, err := h.bot.Send(msg)
+	if err != nil {
+		log.Printf("Error sending info: %v", err)
+	}
+}
+
+func (h *MessageHandler) SendNotificationsSettings(chatID int64) {
+	text := `🔔 Настройки уведомлений:
+
+• Уведомления: Включены ✅
+• Звук: Выключен 🔇
+• Вибрация: Включена 📳
+
+Используйте кнопки ниже для изменения настроек.`
+
+	msg := tgbotapi.NewMessage(chatID, text)
+	msg.ReplyMarkup = CreateSettingsMenuKeyboard()
+
+	_, err := h.bot.Send(msg)
+	if err != nil {
+		log.Printf("Error sending notifications settings: %v", err)
+	}
+}
+
+func (h *MessageHandler) SendSettingsMenu(chatID int64) {
+	text := "⚙️ Настройки"
+	msg := tgbotapi.NewMessage(chatID, text)
+	msg.ReplyMarkup = CreateSettingsMenuKeyboard()
+
+	_, err := h.bot.Send(msg)
+	if err != nil {
+		log.Printf("Error sending settings menu: %v", err)
+	}
+}
