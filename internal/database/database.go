@@ -56,6 +56,8 @@ func AutoMigrate() error {
 
 	err := db.AutoMigrate(
 		&models.User{},
+		&models.Category{},
+		&models.Note{},
 	)
 
 	if err != nil {

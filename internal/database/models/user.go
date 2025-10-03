@@ -16,3 +16,12 @@ type User struct {
 	CreatedAt            time.Time
 	UpdatedAt            time.Time
 }
+
+// Добавляем константы состояний для заметок
+const (
+	StateWaitingForNoteCategory = "waiting_for_note_category"
+	StateWaitingForCategoryName = "waiting_for_category_name"
+	StateWaitingForNoteContent  = "waiting_for_note_content"
+	StateEditingCategory        = "editing_category"
+	StateDeletingCategory       = "deleting_category"
+)

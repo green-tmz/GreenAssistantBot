@@ -2,16 +2,9 @@ package storage
 
 import (
 	"GreenAssistantBot/pkg/models"
+	"log"
 	"sync"
 	"time"
-
-	"github.com/hashicorp/golang-lru/v2"
-)
-
-// Константы для настройки
-const (
-	DefaultCacheSize       = 1000
-	DefaultCleanupInterval = 5 * time.Minute
 )
 
 type BotStorage interface {
@@ -24,57 +17,29 @@ type BotStorage interface {
 	AddMessageToHistory(chatID int64, messageID int)
 	GetMessageHistory(chatID int64) []int
 	ClearUserData(chatID int64)
-	// Новый метод для периодической очистки
 	CleanupExpiredData()
 }
 
 type MemoryStorage struct {
 	mu sync.RWMutex
 
-	// LRU кэши вместо обычных мап
-	userStates      *lru.Cache[int64, string]
-	userData        *lru.Cache[int64, models.UserData]
-	lastBotMessages *lru.Cache[int64, int]
-	messageHistory  *lru.Cache[int64, *messageHistoryEntry]
+	// Простые мапы вместо LRU для надежности
+	userStates      map[int64]string
+	userData        map[int64]models.UserData
+	lastBotMessages map[int64]int
+	messageHistory  map[int64][]int
 
-	// Для TTL (время жизни записей)
-	creationTime map[int64]time.Time
+	// Время последнего доступа для очистки
+	lastAccess map[int64]time.Time
 }
 
-type messageHistoryEntry struct {
-	messageIDs []int
-	createdAt  time.Time
-}
-
-// NewMemoryStorage создает новое хранилище с ограничением по размеру
 func NewMemoryStorage() (*MemoryStorage, error) {
-	// Создаем LRU кэши с ограничением размера
-	userStates, err := lru.New[int64, string](DefaultCacheSize)
-	if err != nil {
-		return nil, err
-	}
-
-	userData, err := lru.New[int64, models.UserData](DefaultCacheSize)
-	if err != nil {
-		return nil, err
-	}
-
-	lastBotMessages, err := lru.New[int64, int](DefaultCacheSize)
-	if err != nil {
-		return nil, err
-	}
-
-	messageHistory, err := lru.New[int64, *messageHistoryEntry](DefaultCacheSize)
-	if err != nil {
-		return nil, err
-	}
-
 	storage := &MemoryStorage{
-		userStates:      userStates,
-		userData:        userData,
-		lastBotMessages: lastBotMessages,
-		messageHistory:  messageHistory,
-		creationTime:    make(map[int64]time.Time),
+		userStates:      make(map[int64]string),
+		userData:        make(map[int64]models.UserData),
+		lastBotMessages: make(map[int64]int),
+		messageHistory:  make(map[int64][]int),
+		lastAccess:      make(map[int64]time.Time),
 	}
 
 	// Запускаем фоновую очистку
@@ -83,9 +48,8 @@ func NewMemoryStorage() (*MemoryStorage, error) {
 	return storage, nil
 }
 
-// startCleanupRoutine запускает периодическую очистку
 func (s *MemoryStorage) startCleanupRoutine() {
-	ticker := time.NewTicker(DefaultCleanupInterval)
+	ticker := time.NewTicker(30 * time.Minute)
 	defer ticker.Stop()
 
 	for range ticker.C {
@@ -93,7 +57,6 @@ func (s *MemoryStorage) startCleanupRoutine() {
 	}
 }
 
-// CleanupExpiredData очищает старые записи
 func (s *MemoryStorage) CleanupExpiredData() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -101,28 +64,31 @@ func (s *MemoryStorage) CleanupExpiredData() {
 	now := time.Now()
 	maxAge := 24 * time.Hour // Удаляем записи старше 24 часов
 
-	// Очищаем creationTime и удаляем соответствующие данные из кэшей
-	for chatID, createdAt := range s.creationTime {
-		if now.Sub(createdAt) > maxAge {
-			delete(s.creationTime, chatID)
-			s.userStates.Remove(chatID)
-			s.userData.Remove(chatID)
-			s.lastBotMessages.Remove(chatID)
-			s.messageHistory.Remove(chatID)
+	for chatID, lastAccess := range s.lastAccess {
+		if now.Sub(lastAccess) > maxAge {
+			delete(s.userStates, chatID)
+			delete(s.userData, chatID)
+			delete(s.lastBotMessages, chatID)
+			delete(s.messageHistory, chatID)
+			delete(s.lastAccess, chatID)
 		}
 	}
 }
 
-// Обновляем все методы с учетом новой структуры:
+func (s *MemoryStorage) updateLastAccess(chatID int64) {
+	s.lastAccess[chatID] = time.Now()
+}
 
 func (s *MemoryStorage) GetUserState(chatID int64) (string, bool) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	state, exists := s.userStates.Get(chatID)
+	state, exists := s.userStates[chatID]
 	if exists {
-		// Обновляем время доступа для LRU
-		s.userStates.Get(chatID) // Это обновляет позицию в LRU
+		s.updateLastAccess(chatID)
+		log.Printf("Storage: GetUserState for chat %d: %s", chatID, state)
+	} else {
+		log.Printf("Storage: GetUserState for chat %d: NOT FOUND", chatID)
 	}
 	return state, exists
 }
@@ -131,17 +97,22 @@ func (s *MemoryStorage) SetUserState(chatID int64, state string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	s.userStates.Add(chatID, state)
-	s.updateCreationTime(chatID)
+	log.Printf("Storage: SetUserState for chat %d: %s", chatID, state)
+	s.userStates[chatID] = state
+	s.updateLastAccess(chatID)
 }
 
 func (s *MemoryStorage) GetUserData(chatID int64) (models.UserData, bool) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	data, exists := s.userData.Get(chatID)
+	data, exists := s.userData[chatID]
 	if exists {
-		s.userData.Get(chatID) // Обновляем LRU
+		s.updateLastAccess(chatID)
+		log.Printf("Storage: GetUserData for chat %d: Name='%s', City='%s', Data='%s', Category='%s'",
+			chatID, data.Name, data.City, data.Data, data.Category)
+	} else {
+		log.Printf("Storage: GetUserData for chat %d: NOT FOUND", chatID)
 	}
 	return data, exists
 }
@@ -150,17 +121,20 @@ func (s *MemoryStorage) SetUserData(chatID int64, data models.UserData) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	s.userData.Add(chatID, data)
-	s.updateCreationTime(chatID)
+	log.Printf("Storage: SetUserData for chat %d: Name='%s', City='%s', Data='%s', Category='%s'",
+		chatID, data.Name, data.City, data.Data, data.Category)
+	s.userData[chatID] = data
+	s.updateLastAccess(chatID)
+	log.Printf("Storage: User data set successfully for chat %d", chatID)
 }
 
 func (s *MemoryStorage) GetLastMessageID(chatID int64) (int, bool) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	messageID, exists := s.lastBotMessages.Get(chatID)
+	messageID, exists := s.lastBotMessages[chatID]
 	if exists {
-		s.lastBotMessages.Get(chatID)
+		s.updateLastAccess(chatID)
 	}
 	return messageID, exists
 }
@@ -169,45 +143,40 @@ func (s *MemoryStorage) SetLastMessageID(chatID int64, messageID int) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	s.lastBotMessages.Add(chatID, messageID)
-	s.updateCreationTime(chatID)
+	s.lastBotMessages[chatID] = messageID
+	s.updateLastAccess(chatID)
 }
 
 func (s *MemoryStorage) AddMessageToHistory(chatID int64, messageID int) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	entry, exists := s.messageHistory.Get(chatID)
-	if !exists {
-		entry = &messageHistoryEntry{
-			messageIDs: make([]int, 0),
-			createdAt:  time.Now(),
-		}
+	if s.messageHistory[chatID] == nil {
+		s.messageHistory[chatID] = make([]int, 0)
 	}
 
-	entry.messageIDs = append(entry.messageIDs, messageID)
+	s.messageHistory[chatID] = append(s.messageHistory[chatID], messageID)
 
 	// Ограничиваем историю 100 сообщениями
-	if len(entry.messageIDs) > 100 {
-		entry.messageIDs = entry.messageIDs[len(entry.messageIDs)-100:]
+	if len(s.messageHistory[chatID]) > 100 {
+		s.messageHistory[chatID] = s.messageHistory[chatID][len(s.messageHistory[chatID])-100:]
 	}
 
-	s.messageHistory.Add(chatID, entry)
-	s.updateCreationTime(chatID)
+	s.updateLastAccess(chatID)
 }
 
 func (s *MemoryStorage) GetMessageHistory(chatID int64) []int {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	entry, exists := s.messageHistory.Get(chatID)
-	if !exists {
+	history := s.messageHistory[chatID]
+	if history == nil {
 		return nil
 	}
 
 	// Возвращаем копию
-	result := make([]int, len(entry.messageIDs))
-	copy(result, entry.messageIDs)
+	result := make([]int, len(history))
+	copy(result, history)
 	return result
 }
 
@@ -215,31 +184,23 @@ func (s *MemoryStorage) ClearUserData(chatID int64) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	s.userStates.Remove(chatID)
-	s.userData.Remove(chatID)
-	s.lastBotMessages.Remove(chatID)
-	s.messageHistory.Remove(chatID)
-	delete(s.creationTime, chatID)
+	delete(s.userStates, chatID)
+	delete(s.userData, chatID)
+	delete(s.lastBotMessages, chatID)
+	delete(s.messageHistory, chatID)
+	delete(s.lastAccess, chatID)
+	log.Printf("Storage: Cleared all data for chat %d", chatID)
 }
 
-// updateCreationTime обновляет время создания/доступа записи
-func (s *MemoryStorage) updateCreationTime(chatID int64) {
-	if _, exists := s.creationTime[chatID]; !exists {
-		s.creationTime[chatID] = time.Now()
-	}
-}
-
-// GetStats возвращает статистику для мониторинга
 func (s *MemoryStorage) GetStats() map[string]interface{} {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
 	return map[string]interface{}{
-		"user_states_size":     s.userStates.Len(),
-		"user_data_size":       s.userData.Len(),
-		"last_messages_size":   s.lastBotMessages.Len(),
-		"message_history_size": s.messageHistory.Len(),
-		"active_users":         len(s.creationTime),
-		"cache_capacity":       DefaultCacheSize,
+		"user_states_size":     len(s.userStates),
+		"user_data_size":       len(s.userData),
+		"last_messages_size":   len(s.lastBotMessages),
+		"message_history_size": len(s.messageHistory),
+		"active_users":         len(s.lastAccess),
 	}
 }
