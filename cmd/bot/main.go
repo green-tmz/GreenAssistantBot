@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"time"
 
 	"GreenAssistantBot/internal/database"
@@ -30,11 +31,53 @@ func monitorStorage(storage storage.BotStorage) {
 	}
 }
 
-func main() {
+func loadEnv() error {
+	// Попробуем несколько возможных путей
+	possiblePaths := []string{
+		".env",
+		"./.env",
+		"../.env",
+		"../../.env",
+	}
 
-	err := godotenv.Load(".env")
+	var loaded bool
+	for _, path := range possiblePaths {
+		if err := godotenv.Load(path); err == nil {
+			log.Printf("Loaded .env from: %s", path)
+			loaded = true
+			break
+		}
+	}
+
+	if !loaded {
+		// Получаем текущую рабочую директорию
+		wd, _ := os.Getwd()
+		log.Printf("Current working directory: %s", wd)
+
+		// Покажем какие файлы есть в директории
+		files, _ := filepath.Glob("*")
+		log.Printf("Files in current directory: %v", files)
+
+		return fmt.Errorf("could not load .env file from any path")
+	}
+
+	return nil
+}
+
+func main() {
+	// Загружаем .env файл
+	err := loadEnv()
 	if err != nil {
-		log.Fatal("Error loading .env file")
+		log.Printf("Warning: %v", err)
+		log.Println("Continuing with system environment variables...")
+	}
+
+	// Проверим наличие обязательных переменных
+	requiredVars := []string{"BOT_TOKEN", "HTTP_PORT", "BOT_WEBHOOK_URL"}
+	for _, envVar := range requiredVars {
+		if os.Getenv(envVar) == "" {
+			log.Printf("Warning: Environment variable %s is not set", envVar)
+		}
 	}
 
 	db := database.GetConnect()

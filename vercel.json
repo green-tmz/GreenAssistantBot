@@ -1,0 +1,20 @@
+{
+  "version": 2,
+  "builds": [
+    {
+      "src": "cmd/bot/main.go",
+      "use": "@vercel/go"
+    }
+  ],
+  "routes": [
+    {
+      "src": "/(.*)",
+      "dest": "/api/bot.go"
+    }
+  ],
+  "functions": {
+    "api/bot.go": {
+      "maxDuration": 30
+    }
+  }
+}
