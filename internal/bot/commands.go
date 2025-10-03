@@ -20,6 +20,21 @@ const (
 	StateWaitingForWeatherCity   = "waiting_for_weather_city"
 )
 
+const (
+	StateWaitingForNoteCategory = "waiting_for_note_category"
+	StateWaitingForCategoryName = "waiting_for_category_name"
+	StateWaitingForNoteContent  = "waiting_for_note_content"
+	StateEditingCategory        = "editing_category"
+	StateDeletingCategory       = "deleting_category"
+)
+
+const (
+	StateWaitingForNoteSelection = "waiting_for_note_selection"
+	StateEditingNote             = "editing_note"
+	StateDeletingNote            = "deleting_note"
+	SaveForwardedMessage         = "save_forwarded_message"
+)
+
 type MessageHandler struct {
 	bot     *tgbotapi.BotAPI
 	storage storage.BotStorage
@@ -29,13 +44,11 @@ func NewMessageHandler(bot *tgbotapi.BotAPI, storage storage.BotStorage) *Messag
 	return &MessageHandler{bot: bot, storage: storage}
 }
 
-func (h *MessageHandler) sendMessage(chatID int64, text string, keyboard tgbotapi.ReplyKeyboardMarkup) error {
+func (h *MessageHandler) sendMessage(chatID int64, text string, replyMarkup interface{}) error {
 	msg := tgbotapi.NewMessage(chatID, text)
 
-	if keyboard.Keyboard != nil {
-		msg.ReplyMarkup = keyboard
-	} else {
-		msg.ReplyMarkup = tgbotapi.NewRemoveKeyboard(true)
+	if replyMarkup != nil {
+		msg.ReplyMarkup = replyMarkup
 	}
 
 	sentMsg, err := h.bot.Send(msg)
@@ -44,7 +57,6 @@ func (h *MessageHandler) sendMessage(chatID int64, text string, keyboard tgbotap
 	}
 
 	h.storage.SetLastMessageID(chatID, sentMsg.MessageID)
-	h.storage.ClearUserData(chatID)
 	return nil
 }
 
